@@ -10,6 +10,8 @@
 # Open source, MIT license.
 set -euo pipefail
 
+CLIPSLOT_VERSION="0.1.0"
+
 CLIPSLOT_DIR="${CLIPSLOT_DIR:-$HOME/.clipslot}"
 
 # ---------- clipboard backends ----------
@@ -364,6 +366,7 @@ case "${1:-help}" in
   rm)    shift; cmd_rm "$@" ;;
   clear) shift || true; cmd_clear ;;
   watch) shift || true; cmd_watch "$@" ;;
+  version|-V|--version) echo "clipslot $CLIPSLOT_VERSION" ;;
   help|-h|--help) usage ;;
   *) echo "clipslot: unknown command '$1'" >&2; usage >&2; exit 1 ;;
 esac

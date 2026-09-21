@@ -1,0 +1,38 @@
+<svg width="720" height="180" viewBox="0 0 720 180" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#7c3aed"/>
+      <stop offset="100%" stop-color="#2dd4bf"/>
+    </linearGradient>
+  </defs>
+
+  <!-- background -->
+  <rect width="720" height="180" rx="16" fill="#0d1117"/>
+  <rect x="0.5" y="0.5" width="719" height="179" rx="15.5" stroke="#30363d"/>
+
+  <!-- slot stack illustration -->
+  <g transform="translate(48, 42)">
+    <rect x="0" y="0"  width="120" height="26" rx="6" fill="#161b22" stroke="#30363d"/>
+    <rect x="0" y="36" width="120" height="26" rx="6" fill="#161b22" stroke="url(#accent)" stroke-width="1.5"/>
+    <rect x="0" y="72" width="120" height="26" rx="6" fill="#161b22" stroke="#30363d"/>
+
+    <text x="12" y="17"  font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11" fill="#484f58">repo-a@main</text>
+    <text x="12" y="53"  font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11" fill="#e6edf3">repo-b@fix</text>
+    <text x="12" y="89"  font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11" fill="#484f58">hist-142011</text>
+
+    <!-- arrow from highlighted slot to clipboard -->
+    <path d="M 128 49 H 168" stroke="url(#accent)" stroke-width="1.5" stroke-linecap="round"/>
+    <path d="M 162 43 L 169 49 L 162 55" stroke="url(#accent)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+
+    <!-- clipboard icon -->
+    <g transform="translate(178, 27)">
+      <rect x="0" y="4" width="34" height="42" rx="5" fill="#161b22" stroke="#e6edf3" stroke-width="1.5"/>
+      <rect x="9" y="0" width="16" height="9" rx="2.5" fill="#0d1117" stroke="#e6edf3" stroke-width="1.5"/>
+      <path d="M 8 20 H 26 M 8 28 H 26 M 8 36 H 19" stroke="#484f58" stroke-width="1.5" stroke-linecap="round"/>
+    </g>
+  </g>
+
+  <!-- wordmark -->
+  <text x="448" y="86" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="44" font-weight="600" fill="#e6edf3">clip<tspan fill="url(#accent)">slot</tspan></text>
+  <text x="448" y="118" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" fill="#8b949e">one clipboard, many agents &#8212; never paste the wrong thing again</text>
+</svg>

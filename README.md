@@ -1,121 +1,132 @@
-# clipslot
+<div align="center">
+
+<img src="assets/banner.svg" alt="clipslot — one clipboard, many agents" width="680">
+
+<br>
+<br>
+
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey)](#install)
+[![Made with Bash](https://img.shields.io/badge/made%20with-bash-1f425f.svg)](clipslot)
+[![Zero dependencies](https://img.shields.io/badge/dependencies-zero-brightgreen)](clipslot)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](#contributing)
 
 **Per-session clipboard slots + clipboard history for parallel AI coding sessions.**
 
-## The problem
+</div>
 
-You run several coding-agent sessions at once — Claude Code, Cursor, anything.
-You ask session A to "copy the result to the clipboard". Before you paste it,
-session B (or any app) also writes to the clipboard. The system clipboard is a
-single global slot — last writer wins — so you paste the wrong thing into the
-wrong thread.
+---
 
-## The fix — two layers
+You run several coding agents at once — Claude Code, Cursor, anything.
+You ask session A to *"copy the result to the clipboard"*. Before you paste,
+session B writes to the clipboard too. The system clipboard is one global
+slot, last writer wins — and you paste the wrong thing into the wrong thread.
 
-**Layer 1: cooperating agents use slots.** Agents save content into **named
-slots** (`~/.clipslot/`), auto-named `<repo>@<branch>`, instead of writing to
-the system clipboard. When **you** are about to paste, run `clipslot load`,
-pick the right slot, and only then does it enter the real clipboard. Nothing
-can clobber it between the pick and your Cmd+V. A bundled Claude Code skill
-and a Cursor rule teach the agents to do this automatically.
+```text
+without clipslot                        with clipslot
 
-**Layer 2: `clipslot watch` protects you from everything else.** A tiny
-background watcher polls the system clipboard and snapshots **every change —
-from any agent, any app, or your own Cmd+C** — into a `hist-*` slot (last 30
-kept by default). No agent cooperation needed: even if something clobbers your
-clipboard, every version is recoverable with `clipslot load`.
-
-```bash
-clipslot watch start    # run once (e.g. after login); stop / status likewise
+session A ──┐                           session A ──▶ slot repo-a@main
+session B ──┼──▶ [ clipboard ] ◀── 💥   session B ──▶ slot repo-b@fix
+session C ──┘    last writer wins       session C ──▶ slot repo-c@main
+                                                          │
+you: Cmd+V 🎲                           you: clipslot load ──▶ [ clipboard ] ──▶ Cmd+V ✅
 ```
 
-Zero dependencies: one bash script. Works on macOS (`pbcopy`/`pbpaste`), Linux
-(`wl-copy` / `xclip` / `xsel`). `fzf` is used for the picker if installed,
-with a numbered-menu fallback.
+## How it works
+
+**① Agents write to slots, not the clipboard.** With the bundled Claude Code
+skill / Cursor rule installed, agents run `clipslot copy` instead of `pbcopy`.
+Content lands in a named slot (auto-named `repo@branch`) under `~/.clipslot/`.
+Nothing touches the system clipboard, so sessions can't clobber each other.
+
+**② You arm the clipboard last.** Right before pasting, run `clipslot load`,
+pick the slot (fzf picker if installed, numbered menu otherwise) — only then
+does it enter the real clipboard.
+
+**③ A watcher covers everything else.** `clipslot watch start` snapshots
+*every* clipboard change — any agent, any app, your own Cmd+C — into `hist-*`
+slots (deduped, last 30 kept). Zero cooperation needed; clobbered content is
+always recoverable.
 
 ## Install
 
 ```bash
-./install.sh
+git clone https://github.com/XACBD/clipslot.git
+cd clipslot && ./install.sh
 ```
 
-This installs:
-
-1. the `clipslot` CLI into `~/.local/bin/`
-2. a **Claude Code skill** into `~/.claude/skills/clipslot/` that teaches
-   Claude to use `clipslot copy` instead of `pbcopy` automatically, and to
-   tell you which slot it saved to.
+This installs the `clipslot` CLI to `~/.local/bin` and the Claude Code skill
+to `~/.claude/skills/clipslot/`. One bash script, zero dependencies.
+macOS (`pbcopy`/`pbpaste`) and Linux (`wl-copy`/`xclip`/`xsel`) supported.
 
 ## Usage
 
 ```bash
-# save (what your agent runs — the skill makes Claude do this on its own)
-git diff | clipslot copy                # slot auto-named e.g. myrepo@main
-some-cmd | clipslot copy fix-login     # explicit slot name
+# agents save (the skill/rule makes them do this automatically)
+git diff | clipslot copy              # slot auto-named, e.g. myrepo@main
+some-cmd | clipslot copy fix-login    # explicit slot name
 
-# load (what you run right before pasting)
-clipslot load                           # interactive picker (fzf or menu)
-clipslot load myrepo@main               # directly by name
+# you load, right before pasting
+clipslot load                         # interactive picker
+clipslot load myrepo@main             # directly by name
 
-# inspect
-clipslot list                           # all slots, newest first, with preview
-clipslot show myrepo@main               # print a slot to stdout
-clipslot rm fix-login
-clipslot clear
-
-# clipboard history (agent-independent safety net)
-clipslot watch start                    # snapshot every clipboard change to hist-* slots
-clipslot watch status
-clipslot watch stop
+# clipboard history — the agent-independent safety net
+clipslot watch start                  # snapshot every clipboard change
 ```
 
-### Slot naming
+| Command                  | What it does                                      |
+|--------------------------|---------------------------------------------------|
+| `... \| clipslot copy [name]` | Save stdin to a slot (never touches the clipboard) |
+| `clipslot copy -s [name]`| …and *also* copy to the system clipboard          |
+| `clipslot load [name]`   | Put a slot into the system clipboard              |
+| `clipslot list`          | All slots, newest first, with size / age / preview|
+| `clipslot show [name]`   | Print a slot to stdout                            |
+| `clipslot rm` / `clear`  | Remove one / all slots                            |
+| `clipslot watch start\|stop\|status` | Manage the clipboard-history watcher  |
 
-By default a slot is named `<repo>@<branch>`, falling back to the current
-directory name outside a git repo. That makes "one slot per session" work
-naturally when your parallel sessions live in different repos or branches
-(the common case). Two sessions on the *same* repo and branch should pass
-explicit names.
+## Agent integrations
 
-### Environment variables
+| Agent            | Setup                                                                 |
+|------------------|-----------------------------------------------------------------------|
+| **Claude Code**  | Installed automatically by `install.sh` ([`skill/SKILL.md`](skill/SKILL.md)) |
+| **Cursor**       | Drop [`rules/clipslot.mdc`](rules/clipslot.mdc) into `.cursor/rules/`, or paste into *Settings → Rules* for all projects |
+| **Anything that reads `AGENTS.md`** | Paste the section from [`rules/AGENTS-snippet.md`](rules/AGENTS-snippet.md) |
+| **Agents you can't configure** | Just run `clipslot watch start` — every clipboard write gets snapshotted anyway |
 
-| Variable                  | Meaning                                             |
-|---------------------------|-----------------------------------------------------|
-| `CLIPSLOT_DIR`            | Slot storage directory (default `~/.clipslot`)      |
-| `CLIPSLOT_COPY_CMD`       | Override the clipboard write command (reads stdin), e.g. an OSC52 helper over SSH |
-| `CLIPSLOT_PASTE_CMD`      | Override the clipboard read command (prints clipboard) |
-| `CLIPSLOT_WATCH_INTERVAL` | Watcher poll interval in seconds (default 1)        |
-| `CLIPSLOT_HISTORY_MAX`    | Max `hist-*` snapshots kept (default 30)            |
+## Configuration
 
-## Using it with each agent
+| Variable                  | Default        | Meaning                                  |
+|---------------------------|----------------|------------------------------------------|
+| `CLIPSLOT_DIR`            | `~/.clipslot`  | Slot storage directory                   |
+| `CLIPSLOT_HISTORY_MAX`    | `30`           | Max `hist-*` snapshots kept              |
+| `CLIPSLOT_WATCH_INTERVAL` | `1`            | Watcher poll interval (seconds)          |
+| `CLIPSLOT_COPY_CMD`       | auto           | Override clipboard **write** command (reads stdin) — e.g. an OSC52 helper over SSH |
+| `CLIPSLOT_PASTE_CMD`      | auto           | Override clipboard **read** command      |
 
-**Claude Code** — `install.sh` installs [`skill/SKILL.md`](skill/SKILL.md) to
-`~/.claude/skills/clipslot/`. Claude then automatically uses `clipslot copy`
-instead of `pbcopy`, reports the slot name, and uses
-`clipslot copy --also-system` only when you explicitly demand the system
-clipboard.
+## FAQ
 
-**Cursor** — copy [`rules/clipslot.mdc`](rules/clipslot.mdc) into any
-project's `.cursor/rules/` directory, or paste its body into
-Cursor Settings → Rules to apply it globally.
+**How is this different from Maccy / Raycast clipboard history?**
+Those solve recovery (like `clipslot watch`). clipslot's core is the other
+half: a *protocol for agents* — slots named per repo/branch, plus skill/rule
+files that teach Claude Code and Cursor to stop fighting over the clipboard
+in the first place, and to tell you which slot they saved to.
 
-**Any other agent** — paste the section from
-[`rules/AGENTS-snippet.md`](rules/AGENTS-snippet.md) into the project's
-`AGENTS.md` or the agent's instruction file.
+**Two sessions on the same repo and branch?**
+They'd share an auto-named slot — pass explicit names (`clipslot copy
+task-a`). The skill/rule files instruct agents to do this.
 
-**Agents you can't configure at all** — just run `clipslot watch start`.
-They keep clobbering the system clipboard as usual, but every version is
-snapshotted and recoverable with `clipslot load`.
+**What about images?**
+Text only, by design. Rich content is out of scope for one bash script.
 
-## Limitations
+**Can a rogue write slip past the watcher?**
+The watcher polls (1s default) — two overwrites within one interval could
+lose the first. In practice agent copies are seconds apart.
 
-- Text only (images and rich content are not handled).
-- Rules/skills are advisory — agents follow them, but a stray tool writing
-  straight to the system clipboard is outside their control. That's exactly
-  what `clipslot watch` covers: the watcher needs no cooperation from anyone.
-- The watcher polls (default every 1s); an extremely fast overwrite within
-  one interval could be missed. In practice agent copies are seconds apart.
+## Contributing
+
+It's ~350 lines of bash. Issues and PRs welcome — please keep the
+zero-dependency promise.
 
 ## License
 
-MIT
+[MIT](LICENSE)
