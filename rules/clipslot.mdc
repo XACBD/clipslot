@@ -1,0 +1,27 @@
+---
+description: Use clipslot instead of the system clipboard so parallel agent sessions don't overwrite each other
+alwaysApply: true
+---
+
+# Clipboard policy: use clipslot
+
+The user runs multiple coding-agent sessions in parallel. The system clipboard
+is global — writing to it directly (pbcopy, xclip, wl-copy, xsel) can clobber
+another session's content before the user pastes it.
+
+When the user asks to copy something to the clipboard:
+
+1. Do NOT pipe to `pbcopy` / `xclip` / `wl-copy` / `xsel` directly.
+2. Instead run: `<command producing content> | clipslot copy`
+   (or `clipslot copy <<'EOF' ... EOF` for generated content).
+   The slot is auto-named `<repo>@<branch>`. If several sessions may share the
+   same repo and branch, pass an explicit task-specific name:
+   `clipslot copy <task-name>`.
+3. Tell the user the slot name and that `clipslot load` (interactive picker)
+   or `clipslot load <name>` puts it into the real clipboard when they are
+   ready to paste.
+
+If the user explicitly insists on the system clipboard immediately, use
+`clipslot copy --also-system` so a recoverable slot copy still exists.
+If `clipslot` is not installed, fall back to the system clipboard and mention
+that clipslot would prevent clobbering.

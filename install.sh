@@ -25,3 +25,9 @@ echo "installed Claude Code skill -> $skill_dir/SKILL.md"
 echo
 echo "Done. Try it:"
 echo "  echo hello | clipslot copy demo && clipslot load demo"
+echo
+echo "Recommended: start the clipboard-history watcher (agent-independent safety net):"
+echo "  clipslot watch start"
+echo
+echo "Using Cursor or another agent? See rules/clipslot.mdc (Cursor rule) and"
+echo "rules/AGENTS-snippet.md (for AGENTS.md) in this directory."

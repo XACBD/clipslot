@@ -32,6 +32,24 @@ copy_to_system_clipboard() {
   fi
 }
 
+paste_from_system_clipboard() {
+  if [ -n "${CLIPSLOT_PASTE_CMD:-}" ]; then
+    sh -c "$CLIPSLOT_PASTE_CMD"
+  elif command -v pbpaste >/dev/null 2>&1; then
+    pbpaste
+  elif command -v wl-paste >/dev/null 2>&1; then
+    wl-paste --no-newline 2>/dev/null
+  elif command -v xclip >/dev/null 2>&1; then
+    xclip -selection clipboard -o 2>/dev/null
+  elif command -v xsel >/dev/null 2>&1; then
+    xsel --clipboard --output 2>/dev/null
+  else
+    echo "clipslot: no clipboard read backend found (pbpaste/wl-paste/xclip/xsel)." >&2
+    echo "clipslot: set CLIPSLOT_PASTE_CMD to a shell command that prints the clipboard." >&2
+    return 1
+  fi
+}
+
 # ---------- helpers ----------
 
 sanitize() {
@@ -201,6 +219,95 @@ cmd_name() {
   echo
 }
 
+# ---------- watch mode: agent-independent clipboard history ----------
+#
+# Polls the system clipboard; every time ANYTHING (any agent, any app, you)
+# writes new content, a snapshot is saved as a hist-* slot. Even if the
+# clipboard gets clobbered, every version stays recoverable via
+# 'clipslot load'.
+
+WATCH_PIDFILE_NAME=".watch.pid"
+
+prune_history() {
+  local max="${CLIPSLOT_HISTORY_MAX:-30}" f
+  # hist- names embed a sortable timestamp; oldest sort first.
+  # (awk instead of 'head -n -N', which BSD/macOS head doesn't support)
+  ( cd "$CLIPSLOT_DIR" 2>/dev/null && ls -1 hist-* 2>/dev/null || true ) \
+    | awk -v m="$max" '{l[NR]=$0} END{for(i=1;i<=NR-m;i++) print l[i]}' \
+    | while IFS= read -r f; do rm -f "$CLIPSLOT_DIR/$f"; done
+}
+
+watch_run() {
+  local interval="${CLIPSLOT_WATCH_INTERVAL:-1}"
+  mkdir -p "$CLIPSLOT_DIR"
+  echo "clipslot: watching the system clipboard every ${interval}s;" >&2
+  echo "clipslot: every change is snapshotted to a hist-* slot (keeping last ${CLIPSLOT_HISTORY_MAX:-30})." >&2
+
+  local content hash last_hash="" slot
+  # seed with current clipboard so we don't snapshot what's already there
+  content=$(paste_from_system_clipboard 2>/dev/null || true)
+  last_hash=$(printf '%s' "$content" | cksum)
+
+  while :; do
+    sleep "$interval"
+    content=$(paste_from_system_clipboard 2>/dev/null || true)
+    [ -n "$content" ] || continue
+    hash=$(printf '%s' "$content" | cksum)
+    [ "$hash" != "$last_hash" ] || continue
+    last_hash=$hash
+
+    slot="hist-$(date +%Y%m%d-%H%M%S)"
+    [ -e "$CLIPSLOT_DIR/$slot" ] && slot="$slot-$$-$RANDOM"
+    printf '%s' "$content" > "$CLIPSLOT_DIR/$slot"
+    prune_history
+  done
+}
+
+watch_pid() {
+  local pidfile="$CLIPSLOT_DIR/$WATCH_PIDFILE_NAME" pid
+  [ -f "$pidfile" ] || return 1
+  pid=$(cat "$pidfile")
+  if kill -0 "$pid" 2>/dev/null; then
+    printf '%s' "$pid"
+  else
+    rm -f "$pidfile"
+    return 1
+  fi
+}
+
+cmd_watch() {
+  local sub="${1:-run}"
+  case "$sub" in
+    run) watch_run ;;
+    start)
+      if pid=$(watch_pid); then
+        echo "clipslot: watcher already running (pid $pid)" >&2
+        exit 0
+      fi
+      mkdir -p "$CLIPSLOT_DIR"
+      nohup "$0" watch run >/dev/null 2>&1 &
+      echo $! > "$CLIPSLOT_DIR/$WATCH_PIDFILE_NAME"
+      echo "clipslot: watcher started (pid $!). Stop with: clipslot watch stop" >&2
+      ;;
+    stop)
+      if pid=$(watch_pid); then
+        kill "$pid" && rm -f "$CLIPSLOT_DIR/$WATCH_PIDFILE_NAME"
+        echo "clipslot: watcher stopped (pid $pid)" >&2
+      else
+        echo "clipslot: watcher is not running" >&2
+      fi
+      ;;
+    status)
+      if pid=$(watch_pid); then
+        echo "clipslot: watcher running (pid $pid)"
+      else
+        echo "clipslot: watcher not running"
+      fi
+      ;;
+    *) echo "clipslot: unknown watch subcommand '$sub' (run|start|stop|status)" >&2; exit 1 ;;
+  esac
+}
+
 usage() {
   cat <<'EOF'
 clipslot — per-session clipboard slots for parallel AI coding sessions
@@ -220,15 +327,29 @@ Usage:
   clipslot rm <name>             Remove a slot.
   clipslot clear                 Remove all slots.
 
-Environment:
-  CLIPSLOT_DIR        Slot storage directory (default: ~/.clipslot)
-  CLIPSLOT_COPY_CMD   Override clipboard command (reads stdin), e.g. for SSH/OSC52.
+  clipslot watch start           Background watcher: snapshots EVERY system
+                                 clipboard change (from any agent or app) into
+                                 a hist-* slot, so nothing is ever lost.
+  clipslot watch stop|status     Manage the watcher.
+  clipslot watch run             Run the watcher in the foreground.
 
-Typical flow with Claude Code (with the bundled skill installed):
-  1. You ask Claude to "copy X to the clipboard".
-  2. Claude runs:  ... | clipslot copy        -> saved to slot "myrepo@main"
-  3. When YOU are ready to paste, run:  clipslot load
-     pick the slot, then Cmd+V. No other session can have overwritten it.
+Environment:
+  CLIPSLOT_DIR             Slot storage directory (default: ~/.clipslot)
+  CLIPSLOT_COPY_CMD        Override clipboard write command (reads stdin).
+  CLIPSLOT_PASTE_CMD       Override clipboard read command (prints clipboard).
+  CLIPSLOT_WATCH_INTERVAL  Watcher poll interval in seconds (default: 1).
+  CLIPSLOT_HISTORY_MAX     Max hist-* snapshots to keep (default: 30).
+
+Two ways to use it:
+
+  A. Cooperating agents (Claude Code skill / Cursor rule installed):
+     the agent runs '... | clipslot copy' instead of pbcopy, then you run
+     'clipslot load' right before pasting and pick the right slot.
+
+  B. Any agent, zero cooperation: run 'clipslot watch start' once.
+     Agents keep using pbcopy as usual; every clipboard change is snapshotted
+     to a hist-* slot. If something clobbers your clipboard, recover any
+     version with 'clipslot load'.
 EOF
 }
 
@@ -242,6 +363,7 @@ case "${1:-help}" in
   name)  shift || true; cmd_name ;;
   rm)    shift; cmd_rm "$@" ;;
   clear) shift || true; cmd_clear ;;
+  watch) shift || true; cmd_watch "$@" ;;
   help|-h|--help) usage ;;
   *) echo "clipslot: unknown command '$1'" >&2; usage >&2; exit 1 ;;
 esac
