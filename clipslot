@@ -1,0 +1,247 @@
+#!/usr/bin/env bash
+#
+# clipslot — per-session clipboard slots for parallel AI coding sessions.
+#
+# Problem: multiple Claude Code / agent sessions all write to the single
+# system clipboard (pbcopy), clobbering each other. clipslot gives each
+# session its own named slot; you load the right slot into the real
+# clipboard only when you're about to paste.
+#
+# Open source, MIT license.
+set -euo pipefail
+
+CLIPSLOT_DIR="${CLIPSLOT_DIR:-$HOME/.clipslot}"
+
+# ---------- clipboard backends ----------
+
+copy_to_system_clipboard() {
+  if [ -n "${CLIPSLOT_COPY_CMD:-}" ]; then
+    sh -c "$CLIPSLOT_COPY_CMD"
+  elif command -v pbcopy >/dev/null 2>&1; then
+    pbcopy
+  elif command -v wl-copy >/dev/null 2>&1; then
+    wl-copy
+  elif command -v xclip >/dev/null 2>&1; then
+    xclip -selection clipboard
+  elif command -v xsel >/dev/null 2>&1; then
+    xsel --clipboard --input
+  else
+    echo "clipslot: no clipboard backend found (pbcopy/wl-copy/xclip/xsel)." >&2
+    echo "clipslot: set CLIPSLOT_COPY_CMD to a shell command that reads stdin." >&2
+    return 1
+  fi
+}
+
+# ---------- helpers ----------
+
+sanitize() {
+  # keep it filesystem- and shell-friendly
+  printf '%s' "$1" | tr -c 'A-Za-z0-9._@-' '-' | cut -c1-80
+}
+
+auto_name() {
+  local top branch name
+  if top=$(git rev-parse --show-toplevel 2>/dev/null); then
+    name=$(basename "$top")
+    branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)
+    [ -n "$branch" ] && [ "$branch" != "HEAD" ] && name="$name@$branch"
+  else
+    name=$(basename "$PWD")
+  fi
+  printf '%s' "$name"
+}
+
+mtime_of() {
+  # portable stat: try GNU (Linux) first — GNU stat would misinterpret the
+  # BSD flags as a filesystem query instead of failing. BSD (macOS) stat
+  # fails cleanly on -c and falls through to -f.
+  stat -c %Y "$1" 2>/dev/null || stat -f %m "$1"
+}
+
+rel_age() {
+  local now diff
+  now=$(date +%s)
+  diff=$(( now - $1 ))
+  if   [ "$diff" -lt 60 ];    then echo "${diff}s ago"
+  elif [ "$diff" -lt 3600 ];  then echo "$(( diff / 60 ))m ago"
+  elif [ "$diff" -lt 86400 ]; then echo "$(( diff / 3600 ))h ago"
+  else                             echo "$(( diff / 86400 ))d ago"
+  fi
+}
+
+slots_by_mtime() {
+  # newest first; one slot name per line
+  [ -d "$CLIPSLOT_DIR" ] || return 0
+  local f
+  for f in "$CLIPSLOT_DIR"/*; do
+    [ -f "$f" ] || continue
+    printf '%s\t%s\n' "$(mtime_of "$f")" "$(basename "$f")"
+  done | sort -rn | cut -f2-
+}
+
+preview_line() {
+  head -n1 "$1" | cut -c1-60 | tr -d '\r'
+}
+
+require_slot() {
+  if [ ! -f "$CLIPSLOT_DIR/$1" ]; then
+    echo "clipslot: no slot named '$1'. Run 'clipslot list' to see slots." >&2
+    exit 1
+  fi
+}
+
+# ---------- commands ----------
+
+cmd_copy() {
+  local also_system=0
+  if [ "${1:-}" = "-s" ] || [ "${1:-}" = "--also-system" ]; then
+    also_system=1; shift
+  fi
+  local name
+  name=$(sanitize "${1:-$(auto_name)}")
+  [ -n "$name" ] || { echo "clipslot: empty slot name" >&2; exit 1; }
+
+  mkdir -p "$CLIPSLOT_DIR"
+  cat > "$CLIPSLOT_DIR/$name"
+
+  local bytes
+  bytes=$(wc -c < "$CLIPSLOT_DIR/$name" | tr -d ' ')
+  echo "clipslot: saved $bytes bytes to slot '$name'" >&2
+  echo "clipslot: load it into the clipboard with: clipslot load $name" >&2
+
+  if [ "$also_system" -eq 1 ]; then
+    copy_to_system_clipboard < "$CLIPSLOT_DIR/$name"
+    echo "clipslot: also copied to system clipboard" >&2
+  fi
+}
+
+pick_slot() {
+  local names
+  names=$(slots_by_mtime)
+  if [ -z "$names" ]; then
+    echo "clipslot: no slots yet. Save one with: <cmd> | clipslot copy" >&2
+    return 1
+  fi
+
+  if command -v fzf >/dev/null 2>&1 && [ -t 0 ] && [ -t 1 ]; then
+    printf '%s\n' "$names" | fzf \
+      --prompt='clipslot> ' \
+      --header='pick a slot to load into the clipboard' \
+      --preview "head -40 '$CLIPSLOT_DIR'/{}" \
+      --preview-window=down,60%
+    return
+  fi
+
+  # numbered menu fallback
+  local i=1 line
+  echo "Slots (newest first):" >&2
+  while IFS= read -r line; do
+    local f="$CLIPSLOT_DIR/$line"
+    printf '  %2d) %-40s %-8s %s\n' \
+      "$i" "$line" "$(rel_age "$(mtime_of "$f")")" "$(preview_line "$f")" >&2
+    i=$(( i + 1 ))
+  done <<< "$names"
+  printf 'Pick a number: ' >&2
+  local choice
+  read -r choice </dev/tty
+  printf '%s\n' "$names" | sed -n "${choice}p"
+}
+
+cmd_load() {
+  local name="${1:-}"
+  if [ -z "$name" ]; then
+    name=$(pick_slot) || exit 1
+    [ -n "$name" ] || exit 1
+  fi
+  name=$(sanitize "$name")
+  require_slot "$name"
+  copy_to_system_clipboard < "$CLIPSLOT_DIR/$name"
+  echo "clipslot: slot '$name' is now in the system clipboard — paste away." >&2
+}
+
+cmd_list() {
+  local names
+  names=$(slots_by_mtime)
+  if [ -z "$names" ]; then
+    echo "clipslot: no slots yet. Save one with: <cmd> | clipslot copy"
+    return 0
+  fi
+  local line f
+  while IFS= read -r line; do
+    f="$CLIPSLOT_DIR/$line"
+    printf '%-40s %8s  %-8s %s\n' \
+      "$line" "$(wc -c < "$f" | tr -d ' ')B" \
+      "$(rel_age "$(mtime_of "$f")")" "$(preview_line "$f")"
+  done <<< "$names"
+}
+
+cmd_show() {
+  local name
+  name=$(sanitize "${1:-$(auto_name)}")
+  require_slot "$name"
+  cat "$CLIPSLOT_DIR/$name"
+}
+
+cmd_rm() {
+  local name
+  name=$(sanitize "${1:?usage: clipslot rm <name>}")
+  require_slot "$name"
+  rm "$CLIPSLOT_DIR/$name"
+  echo "clipslot: removed slot '$name'" >&2
+}
+
+cmd_clear() {
+  rm -f "$CLIPSLOT_DIR"/* 2>/dev/null || true
+  echo "clipslot: all slots cleared" >&2
+}
+
+cmd_name() {
+  # print the auto slot name for the current directory/session
+  sanitize "$(auto_name)"
+  echo
+}
+
+usage() {
+  cat <<'EOF'
+clipslot — per-session clipboard slots for parallel AI coding sessions
+
+Usage:
+  <cmd> | clipslot copy [name]   Save stdin to a slot (default name: repo@branch,
+                                 or current dir name). Does NOT touch the system
+                                 clipboard, so parallel sessions can't clobber you.
+      -s, --also-system          ...and also copy to the system clipboard.
+
+  clipslot load [name]           Put a slot into the system clipboard.
+                                 With no name: interactive picker (fzf if present,
+                                 numbered menu otherwise).
+  clipslot list                  List slots, newest first, with previews.
+  clipslot show [name]           Print a slot's contents to stdout.
+  clipslot name                  Print the auto slot name for this directory.
+  clipslot rm <name>             Remove a slot.
+  clipslot clear                 Remove all slots.
+
+Environment:
+  CLIPSLOT_DIR        Slot storage directory (default: ~/.clipslot)
+  CLIPSLOT_COPY_CMD   Override clipboard command (reads stdin), e.g. for SSH/OSC52.
+
+Typical flow with Claude Code (with the bundled skill installed):
+  1. You ask Claude to "copy X to the clipboard".
+  2. Claude runs:  ... | clipslot copy        -> saved to slot "myrepo@main"
+  3. When YOU are ready to paste, run:  clipslot load
+     pick the slot, then Cmd+V. No other session can have overwritten it.
+EOF
+}
+
+# ---------- dispatch ----------
+
+case "${1:-help}" in
+  copy)  shift; cmd_copy "$@" ;;
+  load)  shift; cmd_load "$@" ;;
+  list|ls) shift || true; cmd_list ;;
+  show|cat) shift; cmd_show "$@" ;;
+  name)  shift || true; cmd_name ;;
+  rm)    shift; cmd_rm "$@" ;;
+  clear) shift || true; cmd_clear ;;
+  help|-h|--help) usage ;;
+  *) echo "clipslot: unknown command '$1'" >&2; usage >&2; exit 1 ;;
+esac
