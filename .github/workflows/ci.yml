@@ -13,7 +13,7 @@ jobs:
       - name: shellcheck
         run: |
           sudo apt-get update -q && sudo apt-get install -y shellcheck
-          shellcheck clipslot install.sh setup-mac.sh tests/smoke.sh
+          shellcheck clipslot install.sh setup.sh setup-mac.sh tests/smoke.sh
 
   test:
     runs-on: ubuntu-latest
