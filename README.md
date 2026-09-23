@@ -124,6 +124,7 @@ hotkey to "Search Clipboard Slots" in Raycast settings and you're done.
 | Agent            | Setup                                                                 |
 |------------------|-----------------------------------------------------------------------|
 | **Claude Code**  | Installed automatically by `install.sh` ([`skill/SKILL.md`](skill/SKILL.md)) |
+| **Codex CLI**    | Installed automatically by `install.sh` (appends the policy to `~/.codex/AGENTS.md` if Codex is present) |
 | **Cursor**       | Drop [`rules/clipslot.mdc`](rules/clipslot.mdc) into `.cursor/rules/`, or paste into *Settings → Rules* for all projects |
 | **Anything that reads `AGENTS.md`** | Paste the section from [`rules/AGENTS-snippet.md`](rules/AGENTS-snippet.md) |
 | **Agents you can't configure** | Just run `clipslot watch start` — every clipboard write gets snapshotted anyway |
