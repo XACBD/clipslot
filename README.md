@@ -51,6 +51,15 @@ always recoverable.
 
 ## Install
 
+**macOS, one command** (clones the repo, installs the CLI + Claude Code skill,
+registers the login watcher, prepares the Raycast extension):
+
+```bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/XACBD/clipslot/main/setup-mac.sh)"
+```
+
+Or manually:
+
 ```bash
 git clone https://github.com/XACBD/clipslot.git
 cd clipslot && ./install.sh
