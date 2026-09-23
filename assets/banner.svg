@@ -33,6 +33,7 @@
   </g>
 
   <!-- wordmark -->
-  <text x="448" y="86" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="44" font-weight="600" fill="#e6edf3">clip<tspan fill="url(#accent)">slot</tspan></text>
-  <text x="448" y="118" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" fill="#8b949e">one clipboard, many agents &#8212; never paste the wrong thing again</text>
+  <text x="475" y="80" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="44" font-weight="600" fill="#e6edf3">clip<tspan fill="url(#accent)">slot</tspan></text>
+  <text x="475" y="112" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" fill="#8b949e">one clipboard, many agents</text>
+  <text x="475" y="134" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" fill="#8b949e">never paste the wrong thing again</text>
 </svg>

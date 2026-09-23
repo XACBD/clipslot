@@ -5,6 +5,7 @@
 <br>
 <br>
 
+[![CI](https://github.com/XACBD/clipslot/actions/workflows/ci.yml/badge.svg)](https://github.com/XACBD/clipslot/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey)](#install)
 [![Made with Bash](https://img.shields.io/badge/made%20with-bash-1f425f.svg)](clipslot)
@@ -69,9 +70,11 @@ some-cmd | clipslot copy fix-login    # explicit slot name
 # you load, right before pasting
 clipslot load                         # interactive picker
 clipslot load myrepo@main             # directly by name
+clipslot load -1                      # most recent slot, no picker
 
 # clipboard history — the agent-independent safety net
-clipslot watch start                  # snapshot every clipboard change
+clipslot watch install                # start at login (launchd / systemd)
+clipslot watch start                  # ...or just for this session
 ```
 
 | Command                  | What it does                                      |
@@ -79,10 +82,12 @@ clipslot watch start                  # snapshot every clipboard change
 | `... \| clipslot copy [name]` | Save stdin to a slot (never touches the clipboard) |
 | `clipslot copy -s [name]`| …and *also* copy to the system clipboard          |
 | `clipslot load [name]`   | Put a slot into the system clipboard              |
+| `clipslot load -1`       | Load the most recent slot, no picker              |
 | `clipslot list`          | All slots, newest first, with size / age / preview|
 | `clipslot show [name]`   | Print a slot to stdout                            |
 | `clipslot rm` / `clear`  | Remove one / all slots                            |
 | `clipslot watch start\|stop\|status` | Manage the clipboard-history watcher  |
+| `clipslot watch install\|uninstall` | Register/remove the watcher as a login service (launchd / systemd) |
 
 ## Agent integrations
 
@@ -100,6 +105,7 @@ clipslot watch start                  # snapshot every clipboard change
 | `CLIPSLOT_DIR`            | `~/.clipslot`  | Slot storage directory                   |
 | `CLIPSLOT_HISTORY_MAX`    | `30`           | Max `hist-*` snapshots kept              |
 | `CLIPSLOT_WATCH_INTERVAL` | `1`            | Watcher poll interval (seconds)          |
+| `CLIPSLOT_MAX_BYTES`      | `1000000`      | Watcher skips clipboard payloads larger than this |
 | `CLIPSLOT_COPY_CMD`       | auto           | Override clipboard **write** command (reads stdin) — e.g. an OSC52 helper over SSH |
 | `CLIPSLOT_PASTE_CMD`      | auto           | Override clipboard **read** command      |
 

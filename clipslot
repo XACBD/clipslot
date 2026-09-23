@@ -10,7 +10,7 @@
 # Open source, MIT license.
 set -euo pipefail
 
-CLIPSLOT_VERSION="0.1.0"
+CLIPSLOT_VERSION="0.2.0"
 
 CLIPSLOT_DIR="${CLIPSLOT_DIR:-$HOME/.clipslot}"
 
@@ -169,7 +169,13 @@ pick_slot() {
 
 cmd_load() {
   local name="${1:-}"
-  if [ -z "$name" ]; then
+  if [ "$name" = "-1" ] || [ "$name" = "--latest" ]; then
+    name=$(slots_by_mtime | head -n1)
+    if [ -z "$name" ]; then
+      echo "clipslot: no slots yet. Save one with: <cmd> | clipslot copy" >&2
+      exit 1
+    fi
+  elif [ -z "$name" ]; then
     name=$(pick_slot) || exit 1
     [ -n "$name" ] || exit 1
   fi
@@ -234,7 +240,7 @@ prune_history() {
   local max="${CLIPSLOT_HISTORY_MAX:-30}" f
   # hist- names embed a sortable timestamp; oldest sort first.
   # (awk instead of 'head -n -N', which BSD/macOS head doesn't support)
-  ( cd "$CLIPSLOT_DIR" 2>/dev/null && ls -1 hist-* 2>/dev/null || true ) \
+  ( cd "$CLIPSLOT_DIR" 2>/dev/null || exit 0; ls -1 hist-* 2>/dev/null ) \
     | awk -v m="$max" '{l[NR]=$0} END{for(i=1;i<=NR-m;i++) print l[i]}' \
     | while IFS= read -r f; do rm -f "$CLIPSLOT_DIR/$f"; done
 }
@@ -250,6 +256,7 @@ watch_run() {
   content=$(paste_from_system_clipboard 2>/dev/null || true)
   last_hash=$(printf '%s' "$content" | cksum)
 
+  local max_bytes="${CLIPSLOT_MAX_BYTES:-1000000}" size
   while :; do
     sleep "$interval"
     content=$(paste_from_system_clipboard 2>/dev/null || true)
@@ -257,6 +264,10 @@ watch_run() {
     hash=$(printf '%s' "$content" | cksum)
     [ "$hash" != "$last_hash" ] || continue
     last_hash=$hash
+    # skip huge payloads (e.g. an accidentally copied file) but remember
+    # their hash so they aren't re-checked every tick
+    size=$(printf '%s' "$content" | wc -c)
+    [ "$size" -le "$max_bytes" ] || continue
 
     slot="hist-$(date +%Y%m%d-%H%M%S)"
     [ -e "$CLIPSLOT_DIR/$slot" ] && slot="$slot-$$-$RANDOM"
@@ -277,10 +288,89 @@ watch_pid() {
   fi
 }
 
+script_abspath() {
+  printf '%s/%s' "$(cd "$(dirname "$0")" && pwd)" "$(basename "$0")"
+}
+
+watch_install() {
+  local script
+  script=$(script_abspath)
+  if [ "$(uname)" = "Darwin" ]; then
+    local plist="$HOME/Library/LaunchAgents/com.clipslot.watch.plist"
+    mkdir -p "$HOME/Library/LaunchAgents"
+    cat > "$plist" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.clipslot.watch</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>$script</string>
+    <string>watch</string>
+    <string>run</string>
+  </array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+</dict>
+</plist>
+EOF
+    launchctl unload "$plist" 2>/dev/null || true
+    launchctl load -w "$plist"
+    echo "clipslot: watcher installed as launchd agent (starts at login)." >&2
+    echo "clipslot: uninstall with: clipslot watch uninstall" >&2
+  elif command -v systemctl >/dev/null 2>&1; then
+    local unit_dir="$HOME/.config/systemd/user"
+    mkdir -p "$unit_dir"
+    cat > "$unit_dir/clipslot-watch.service" <<EOF
+[Unit]
+Description=clipslot clipboard watcher
+
+[Service]
+ExecStart=$script watch run
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
+EOF
+    systemctl --user daemon-reload
+    systemctl --user enable --now clipslot-watch.service
+    echo "clipslot: watcher installed as systemd user service (starts at login)." >&2
+    echo "clipslot: uninstall with: clipslot watch uninstall" >&2
+  else
+    echo "clipslot: no launchd or systemd found; use 'clipslot watch start' manually." >&2
+    return 1
+  fi
+}
+
+watch_uninstall() {
+  if [ "$(uname)" = "Darwin" ]; then
+    local plist="$HOME/Library/LaunchAgents/com.clipslot.watch.plist"
+    if [ -f "$plist" ]; then
+      launchctl unload -w "$plist" 2>/dev/null || true
+      rm -f "$plist"
+      echo "clipslot: launchd watcher removed." >&2
+    else
+      echo "clipslot: launchd watcher was not installed." >&2
+    fi
+  elif command -v systemctl >/dev/null 2>&1; then
+    if [ -f "$HOME/.config/systemd/user/clipslot-watch.service" ]; then
+      systemctl --user disable --now clipslot-watch.service 2>/dev/null || true
+      rm -f "$HOME/.config/systemd/user/clipslot-watch.service"
+      systemctl --user daemon-reload
+      echo "clipslot: systemd watcher removed." >&2
+    else
+      echo "clipslot: systemd watcher was not installed." >&2
+    fi
+  fi
+}
+
 cmd_watch() {
   local sub="${1:-run}"
   case "$sub" in
     run) watch_run ;;
+    install) watch_install ;;
+    uninstall) watch_uninstall ;;
     start)
       if pid=$(watch_pid); then
         echo "clipslot: watcher already running (pid $pid)" >&2
@@ -306,7 +396,7 @@ cmd_watch() {
         echo "clipslot: watcher not running"
       fi
       ;;
-    *) echo "clipslot: unknown watch subcommand '$sub' (run|start|stop|status)" >&2; exit 1 ;;
+    *) echo "clipslot: unknown watch subcommand '$sub' (run|start|stop|status|install|uninstall)" >&2; exit 1 ;;
   esac
 }
 
@@ -323,6 +413,7 @@ Usage:
   clipslot load [name]           Put a slot into the system clipboard.
                                  With no name: interactive picker (fzf if present,
                                  numbered menu otherwise).
+      -1, --latest               Load the most recent slot, no picker.
   clipslot list                  List slots, newest first, with previews.
   clipslot show [name]           Print a slot's contents to stdout.
   clipslot name                  Print the auto slot name for this directory.
@@ -333,6 +424,9 @@ Usage:
                                  clipboard change (from any agent or app) into
                                  a hist-* slot, so nothing is ever lost.
   clipslot watch stop|status     Manage the watcher.
+  clipslot watch install         Register the watcher to start at login
+                                 (launchd on macOS, systemd user unit on Linux).
+  clipslot watch uninstall       Remove the login watcher.
   clipslot watch run             Run the watcher in the foreground.
 
 Environment:
@@ -341,6 +435,8 @@ Environment:
   CLIPSLOT_PASTE_CMD       Override clipboard read command (prints clipboard).
   CLIPSLOT_WATCH_INTERVAL  Watcher poll interval in seconds (default: 1).
   CLIPSLOT_HISTORY_MAX     Max hist-* snapshots to keep (default: 30).
+  CLIPSLOT_MAX_BYTES       Watcher skips clipboard payloads larger than this
+                           (default: 1000000).
 
 Two ways to use it:
 
