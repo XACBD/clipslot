@@ -119,6 +119,14 @@ npm install && npm run dev   # installs the extension into Raycast
 After the first `npm run dev`, the extension stays in Raycast — assign a
 hotkey to "Search Clipboard Slots" in Raycast settings and you're done.
 
+### No Raycast? Native picker instead
+
+`clipslot load --gui` opens a built-in macOS list dialog (no third-party
+apps). To give it a global hotkey with only stock macOS tools: open the
+**Shortcuts** app → new shortcut → "Run Shell Script" with
+`~/.local/bin/clipslot load --gui` → assign a keyboard shortcut in the
+shortcut's settings. Pick a slot, then Cmd+V wherever you are.
+
 ## Agent integrations
 
 | Agent            | Setup                                                                 |

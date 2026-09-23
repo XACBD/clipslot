@@ -175,9 +175,32 @@ pick_slot() {
   printf '%s\n' "$names" | sed -n "${choice}p"
 }
 
+pick_slot_gui() {
+  # native macOS dialog via osascript — no third-party apps needed
+  if ! command -v osascript >/dev/null 2>&1; then
+    echo "clipslot: --gui needs macOS (osascript not found)." >&2
+    return 1
+  fi
+  local names list sel
+  names=$(slots_by_mtime)
+  if [ -z "$names" ]; then
+    echo "clipslot: no slots yet. Save one with: <cmd> | clipslot copy" >&2
+    return 1
+  fi
+  # slot names are sanitized to [A-Za-z0-9._@-], safe to embed in quotes
+  list=$(printf '%s\n' "$names" | awk '{printf "\"%s\",", $0}' | sed 's/,$//')
+  sel=$(osascript -e "choose from list {$list} with prompt \"Load into clipboard:\" with title \"clipslot\"" 2>/dev/null || true)
+  if [ -z "$sel" ] || [ "$sel" = "false" ]; then
+    return 1
+  fi
+  printf '%s' "$sel"
+}
+
 cmd_load() {
   local name="${1:-}"
-  if [ "$name" = "-1" ] || [ "$name" = "--latest" ]; then
+  if [ "$name" = "--gui" ] || [ "$name" = "-g" ]; then
+    name=$(pick_slot_gui) || exit 1
+  elif [ "$name" = "-1" ] || [ "$name" = "--latest" ]; then
     name=$(slots_by_mtime | head -n1)
     if [ -z "$name" ]; then
       echo "clipslot: no slots yet. Save one with: <cmd> | clipslot copy" >&2
@@ -422,6 +445,9 @@ Usage:
                                  With no name: interactive picker (fzf if present,
                                  numbered menu otherwise).
       -1, --latest               Load the most recent slot, no picker.
+      -g, --gui                  Native macOS picker dialog (osascript) —
+                                 bindable to a hotkey via the Shortcuts app,
+                                 no third-party tools needed.
   clipslot list                  List slots, newest first, with previews.
   clipslot show [name]           Print a slot's contents to stdout.
   clipslot name                  Print the auto slot name for this directory.
