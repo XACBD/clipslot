@@ -6,16 +6,33 @@
 set -euo pipefail
 
 REPO_DIR="${CLIPSLOT_REPO_DIR:-$HOME/clipslot}"
-REPO_URL="https://github.com/XACBD/clipslot.git"
+REPO_URL="${CLIPSLOT_REPO_URL:-https://github.com/XACBD/clipslot.git}"
+REPO_URL_SSH="git@github.com:XACBD/clipslot.git"
 OS=$(uname)
 
 step() { printf '\n\033[1;35m==> %s\033[0m\n' "$*"; }
 
 step "Getting the code ($REPO_DIR)"
 if [ -d "$REPO_DIR/.git" ]; then
-  git -C "$REPO_DIR" pull --ff-only
+  git -C "$REPO_DIR" pull --ff-only || {
+    echo "Pull failed (network?). Continuing with the existing checkout."
+  }
 else
-  git clone "$REPO_URL" "$REPO_DIR"
+  if ! git clone "$REPO_URL" "$REPO_DIR"; then
+    echo "HTTPS clone failed (blocked/reset network?) — trying SSH..."
+    git clone "$REPO_URL_SSH" "$REPO_DIR" || {
+      echo ""
+      echo "SSH also failed. Two options:"
+      echo "  1. Enable your VPN/proxy and re-run this command."
+      echo "  2. Route SSH over port 443: add to ~/.ssh/config:"
+      echo "       Host github.com"
+      echo "         HostName ssh.github.com"
+      echo "         Port 443"
+      echo "         User git"
+      echo "     then re-run this command."
+      exit 1
+    }
+  fi
 fi
 
 step "Installing CLI + agent integrations (Claude Code skill, Codex policy)"
