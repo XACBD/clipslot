@@ -21,3 +21,16 @@ jobs:
       - uses: actions/checkout@v4
       - name: smoke tests
         run: ./tests/smoke.sh
+
+  raycast:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: typecheck Raycast extension
+        working-directory: raycast
+        run: |
+          npm ci
+          npx tsc --noEmit

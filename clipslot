@@ -10,7 +10,7 @@
 # Open source, MIT license.
 set -euo pipefail
 
-CLIPSLOT_VERSION="0.2.0"
+CLIPSLOT_VERSION="0.3.0"
 
 CLIPSLOT_DIR="${CLIPSLOT_DIR:-$HOME/.clipslot}"
 
@@ -144,11 +144,19 @@ pick_slot() {
   fi
 
   if command -v fzf >/dev/null 2>&1 && [ -t 0 ] && [ -t 1 ]; then
-    printf '%s\n' "$names" | fzf \
+    local line f
+    while IFS= read -r line; do
+      f="$CLIPSLOT_DIR/$line"
+      printf '%s\t%s\t%s\t%s\n' \
+        "$line" "$(rel_age "$(mtime_of "$f")")" \
+        "$(wc -c < "$f" | tr -d ' ')B" "$(preview_line "$f")"
+    done <<< "$names" | fzf \
+      --delimiter '\t' \
       --prompt='clipslot> ' \
       --header='pick a slot to load into the clipboard' \
-      --preview "head -40 '$CLIPSLOT_DIR'/{}" \
-      --preview-window=down,60%
+      --preview "head -40 '$CLIPSLOT_DIR'/{1}" \
+      --preview-window=down,60% \
+    | cut -f1
     return
   fi
 

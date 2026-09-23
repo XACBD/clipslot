@@ -89,6 +89,27 @@ clipslot watch start                  # ...or just for this session
 | `clipslot watch start\|stop\|status` | Manage the clipboard-history watcher  |
 | `clipslot watch install\|uninstall` | Register/remove the watcher as a login service (launchd / systemd) |
 
+## Raycast extension (macOS) — the fastest way to paste
+
+The [`raycast/`](raycast/) extension removes the terminal from the loop
+entirely: hit your Raycast hotkey, type a few letters, **press Enter and the
+slot is pasted straight into the app you came from** — no `clipslot load`,
+no Cmd+V.
+
+- Session slots and clipboard history in separate sections, newest first
+- Full content preview pane, search by name or first line
+- Enter = paste to active app · Cmd+Enter = load into clipboard · Ctrl+X = delete
+
+Install (requires [Raycast](https://raycast.com) and Node.js):
+
+```bash
+cd clipslot/raycast
+npm install && npm run dev   # installs the extension into Raycast
+```
+
+After the first `npm run dev`, the extension stays in Raycast — assign a
+hotkey to "Search Clipboard Slots" in Raycast settings and you're done.
+
 ## Agent integrations
 
 | Agent            | Setup                                                                 |
