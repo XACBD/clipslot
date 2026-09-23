@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>clipslot — one clipboard, many agents</title>
+<meta name="description" content="Per-session clipboard slots + history for parallel AI coding agents (Claude Code, Cursor, Codex). Never paste the wrong thing again.">
+<meta property="og:title" content="clipslot — one clipboard, many agents">
+<meta property="og:description" content="Per-session clipboard slots + history for parallel AI coding agents. Never paste the wrong thing again.">
+<style>
+  :root {
+    --bg: #0d1117; --panel: #161b22; --border: #30363d;
+    --text: #e6edf3; --muted: #8b949e; --dim: #484f58;
+    --accent1: #7c3aed; --accent2: #2dd4bf;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+    line-height: 1.6;
+  }
+  code, pre, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 0 24px; }
+  .grad { background: linear-gradient(120deg, var(--accent1), var(--accent2));
+          -webkit-background-clip: text; background-clip: text; color: transparent; }
+
+  header { padding: 96px 0 48px; text-align: center; }
+  .logo { font-size: 56px; font-weight: 700; letter-spacing: -1px; }
+  .tagline { color: var(--muted); font-size: 20px; margin-top: 12px; }
+  .badges { margin-top: 20px; color: var(--dim); font-size: 14px; }
+  .badges span { margin: 0 10px; }
+
+  .install {
+    margin: 40px auto 0; max-width: 720px; background: var(--panel);
+    border: 1px solid var(--border); border-radius: 12px;
+    display: flex; align-items: center; gap: 12px; padding: 14px 18px;
+    text-align: left;
+  }
+  .install code { font-size: 13px; color: var(--text); overflow-x: auto; white-space: nowrap; flex: 1; }
+  .install button {
+    background: linear-gradient(120deg, var(--accent1), var(--accent2));
+    color: #fff; border: 0; border-radius: 8px; padding: 8px 16px;
+    font-size: 13px; font-weight: 600; cursor: pointer; flex-shrink: 0;
+  }
+  .sub { color: var(--dim); font-size: 13px; margin-top: 10px; }
+
+  section { padding: 56px 0; border-top: 1px solid var(--border); }
+  h2 { font-size: 28px; margin-bottom: 24px; }
+  p.lead { color: var(--muted); font-size: 17px; max-width: 640px; }
+
+  .diagram {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    padding: 24px; margin-top: 28px; overflow-x: auto;
+  }
+  .diagram pre { font-size: 13px; line-height: 1.7; color: var(--muted); }
+  .diagram .bad { color: #f85149; } .diagram .good { color: var(--accent2); }
+
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-top: 28px; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 22px; }
+  .card h3 { font-size: 16px; margin-bottom: 8px; }
+  .card .n { color: var(--dim); font-size: 13px; font-weight: 700; letter-spacing: 1px; }
+  .card p { color: var(--muted); font-size: 14px; }
+  .card code { font-size: 12.5px; color: var(--accent2); }
+
+  table { width: 100%; border-collapse: collapse; margin-top: 24px; font-size: 15px; }
+  th, td { text-align: left; padding: 12px 14px; border-bottom: 1px solid var(--border); }
+  th { color: var(--dim); font-weight: 600; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; }
+  td:first-child { font-weight: 600; }
+  td { color: var(--muted); }
+  .auto { color: var(--accent2); font-weight: 600; }
+
+  footer { padding: 48px 0 64px; text-align: center; color: var(--dim); font-size: 14px; }
+  footer a { color: var(--muted); text-decoration: none; margin: 0 12px; }
+  footer a:hover { color: var(--text); }
+  .cta { display: inline-block; margin-top: 8px; padding: 12px 28px; border-radius: 10px;
+         background: linear-gradient(120deg, var(--accent1), var(--accent2));
+         color: #fff; font-weight: 700; text-decoration: none; }
+</style>
+</head>
+<body>
+
+<header class="wrap">
+  <div class="logo mono">clip<span class="grad">slot</span></div>
+  <div class="tagline">one clipboard, many agents — never paste the wrong thing again</div>
+  <div class="badges mono"><span>zero dependencies</span><span>·</span><span>one bash script</span><span>·</span><span>macOS &amp; Linux</span><span>·</span><span>MIT</span></div>
+  <div class="install">
+    <code id="cmd">bash -c "$(curl -fsSL https://raw.githubusercontent.com/XACBD/clipslot/main/setup.sh)"</code>
+    <button onclick="navigator.clipboard.writeText(document.getElementById('cmd').textContent).then(()=>{this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',1500)})">Copy</button>
+  </div>
+  <div class="sub">installs the CLI, agent integrations, and the login watcher — with a self-test at the end</div>
+</header>
+
+<section class="wrap">
+  <h2>The problem</h2>
+  <p class="lead">You run several coding agents at once — Claude Code, Cursor, Codex.
+  You ask session A to “copy the result”. Before you paste, session B writes to the
+  clipboard too. The system clipboard is one global slot, last writer wins:
+  you paste the wrong thing into the wrong thread.</p>
+  <div class="diagram"><pre>
+<span class="bad">without clipslot</span>                      <span class="good">with clipslot</span>
+
+session A ──┐                         session A ──▶ slot repo-a@main
+session B ──┼──▶ [ clipboard ]        session B ──▶ slot repo-b@fix
+session C ──┘    <span class="bad">last writer wins</span>     session C ──▶ slot repo-c@main
+                                                        │
+you: Cmd+V  <span class="bad">🎲</span>                        you: pick a slot ──▶ [ clipboard ] ──▶ Cmd+V <span class="good">✓</span></pre>
+  </div>
+</section>
+
+<section class="wrap">
+  <h2>Three layers of defense</h2>
+  <div class="cards">
+    <div class="card">
+      <div class="n">01 · SLOTS</div>
+      <h3>Agents write to slots</h3>
+      <p>With the bundled skill/rules, agents run <code>clipslot copy</code> instead of
+      <code>pbcopy</code>. Content lands in a named slot (<code>repo@branch</code>) —
+      nothing touches the clipboard, so sessions can’t clobber each other.</p>
+    </div>
+    <div class="card">
+      <div class="n">02 · LOAD</div>
+      <h3>You arm the clipboard last</h3>
+      <p>Right before pasting: <code>clipslot load</code> (fzf picker),
+      <code>load --gui</code> (native macOS dialog), <code>load -1</code> (latest),
+      or the Raycast extension — Enter pastes straight into the app you came from.</p>
+    </div>
+    <div class="card">
+      <div class="n">03 · WATCH</div>
+      <h3>History catches everything else</h3>
+      <p><code>clipslot watch install</code> snapshots every clipboard change —
+      any agent, any app, your own Cmd+C — into history slots. Zero cooperation
+      needed; clobbered content is always recoverable.</p>
+    </div>
+  </div>
+</section>
+
+<section class="wrap">
+  <h2>Works with your agent</h2>
+  <table>
+    <tr><th>Agent</th><th>Setup</th></tr>
+    <tr><td>Claude Code</td><td><span class="auto">automatic</span> — installer adds a skill to <code class="mono">~/.claude/skills/</code></td></tr>
+    <tr><td>Codex CLI</td><td><span class="auto">automatic</span> — installer appends the policy to <code class="mono">~/.codex/AGENTS.md</code></td></tr>
+    <tr><td>Cursor</td><td>drop <code class="mono">rules/clipslot.mdc</code> into <code class="mono">.cursor/rules/</code>, or paste into Settings → Rules</td></tr>
+    <tr><td>Anything else</td><td>the watcher needs no cooperation — every clipboard write is snapshotted anyway</td></tr>
+  </table>
+</section>
+
+<footer>
+  <a class="cta" href="https://github.com/XACBD/clipslot">View on GitHub →</a>
+  <div style="margin-top:24px">
+    <a href="https://github.com/XACBD/clipslot#usage">Docs</a>
+    <a href="https://github.com/XACBD/clipslot/releases">Releases</a>
+    <a href="https://github.com/XACBD/clipslot/blob/main/LICENSE">MIT License</a>
+  </div>
+</footer>
+
+</body>
+</html>
